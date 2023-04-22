@@ -23,6 +23,9 @@ Resources:
       SubnetId: !Ref SubnetId
       SecurityGroupIds:
        - sg-009e14b4f7676f802
+      Tags:
+      - Key: Name
+        Value: DevOps Sandbox Containerized Jenkins
       IamInstanceProfile: !Ref InstanceProfile
       UserData:
         Fn::Base64: !Sub |
