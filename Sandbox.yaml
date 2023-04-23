@@ -1,0 +1,85 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: DevOps Sandbox on AWS EC2 (Amazon Linux 2) with Docker, Jenkins, Helm, and Minikube
+Parameters:
+  KeyName:
+    Description: The EC2 Key Pair to allow SSH access to the instance
+    Type: AWS::EC2::KeyPair::KeyName
+  AmazonLinux2AmiId:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+  VPCId:
+    Description: The VPC ID where the instance will be launched
+    Type: AWS::EC2::VPC::Id
+  SubnetId:
+    Description: The subnet ID where the instance will be launched
+    Type: AWS::EC2::Subnet::Id
+Resources:
+  DevOpsSandboxInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t3a.small
+      ImageId: !Ref AmazonLinux2AmiId
+      KeyName: !Ref KeyName
+      SubnetId: !Ref SubnetId
+      SecurityGroupIds:
+       - sg-009e14b4f7676f802
+      Tags:
+      - Key: Name
+        Value: DevOps Sandbox
+      IamInstanceProfile: !Ref InstanceProfile
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+          aws s3 cp s3://elijahscloudformationtemplates/DevOpsSandbox/commands.sh /tmp/commands.sh
+          chmod +x /tmp/commands.sh
+          /tmp/commands.sh
+      BlockDeviceMappings:
+      - DeviceName: /dev/xvda
+        Ebs:
+          VolumeType: gp3
+          VolumeSize: 20  # Set the volume size according to your needs
+      Metadata:
+        AWS::CloudFormation::Init:
+          configSets:
+            setup:
+              - install_software
+          install_software:
+            packages:
+              yum:
+                docker: []
+                jq: []
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: "/"
+      Roles:
+        - !Ref EC2InstanceRole
+  EC2InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: "/"
+      Policies:
+        - PolicyName: CloudFormationAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudformation:DescribeStackResource
+                  - cloudformation:DescribeStackResources
+                  - cloudformation:SignalResource
+                  - s3:PutObject
+                Resource: arn:aws:s3:::elijahscloudformationtemplates/*
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource: arn:aws:s3:::elijahscloudformationtemplates/*
