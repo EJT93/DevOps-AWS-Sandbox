@@ -113,6 +113,50 @@ Resources:
     Properties:
       GroupDescription: Sandbox Security Group
       VpcId: !Ref SandboxVPC
+
+  VPCId:
+    Description: The VPC ID where the instance will be launched
+    Type: AWS::EC2::VPC::Id
+  SubnetId:
+    Description: The subnet ID where the instance will be launched
+    Type: AWS::EC2::Subnet::Id
+Resources:
+  DevOpsSandboxInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t3a.small
+      ImageId: !Ref AmazonLinux2AmiId
+      KeyName: !Ref KeyName
+      SubnetId: !Ref SubnetId
+      SecurityGroupIds:
+        - !Ref DevOpsSandboxSecurityGroup
+      IamInstanceProfile: !Ref InstanceProfile
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+          aws s3 cp s3://elijahscloudformationtemplates/DevOpsSandbox/commands.sh /tmp/commands.sh
+          chmod +x /tmp/commands.sh
+          /tmp/commands.sh
+      BlockDeviceMappings:
+      - DeviceName: /dev/xvda
+        Ebs:
+          VolumeType: gp3
+          VolumeSize: 20  # Set the volume size according to your needs
+      Metadata:
+        AWS::CloudFormation::Init:
+          configSets:
+            setup:
+              - install_software
+          install_software:
+            packages:
+              yum:
+                docker: []
+                jq: []
+  DevOpsSandboxSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable SSH, HTTP, and Jenkins access
+
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 22
@@ -130,6 +174,7 @@ Resources:
           FromPort: 8080
           ToPort: 8080
           CidrIp: 0.0.0.0/0
+
       Tags:
         - Key: Name
           Value: Sandbox Security Group
@@ -171,6 +216,7 @@ Resources:
                 jq: []
 
   # IAM Instance Profile
+
   InstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
@@ -179,6 +225,7 @@ Resources:
         - !Ref EC2InstanceRole
 
   # IAM Role
+
   EC2InstanceRole:
     Type: AWS::IAM::Role
     Properties:

@@ -82,4 +82,8 @@ Resources:
               - Effect: Allow
                 Action:
                   - s3:PutObject
+<<<<<<< HEAD
                 Resource: arn:aws:s3:::elijahscloudformationtemplates/*
+=======
+                Resource: arn:aws:s3:::elijahscloudformationtemplates/*
+>>>>>>> origin/main
