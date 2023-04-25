@@ -7,25 +7,146 @@ Parameters:
   AmazonLinux2AmiId:
     Type: AWS::SSM::Parameter::Value<String>
     Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
-  VPCId:
-    Description: The VPC ID where the instance will be launched
-    Type: AWS::EC2::VPC::Id
-  SubnetId:
-    Description: The subnet ID where the instance will be launched
-    Type: AWS::EC2::Subnet::Id
+
 Resources:
+  # VPC
+  SandboxVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: Sandbox VPC
+
+  # Internet Gateway
+  SandboxIGW:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: Sandbox IGW
+
+  # Attach Internet Gateway to VPC
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref SandboxVPC
+      InternetGatewayId: !Ref SandboxIGW
+
+  # Subnets
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref SandboxVPC
+      CidrBlock: 10.0.0.0/18
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      Tags:
+        - Key: Name
+          Value: Private Subnet A
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref SandboxVPC
+      CidrBlock: 10.0.64.0/18
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      Tags:
+        - Key: Name
+          Value: Private Subnet B
+
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref SandboxVPC
+      CidrBlock: 10.0.128.0/18
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      Tags:
+        - Key: Name
+          Value: Public Subnet A
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref SandboxVPC
+      CidrBlock: 10.0.192.0/18
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      Tags:
+        - Key: Name
+          Value: Public Subnet B
+
+  # Route Table
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref SandboxVPC
+      Tags:
+        - Key: Name
+          Value: Public Route Table
+
+  # Route for Internet Gateway
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref SandboxIGW
+
+  # Associate Public Route Table with Public Subnets
+  PublicSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetB
+      RouteTableId: !Ref PublicRouteTable
+
+  # Security Group
+  SandboxSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Sandbox Security Group
+      VpcId: !Ref SandboxVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: Sandbox Security Group
+
+  # EC2 Instance
   DevOpsSandboxInstance:
     Type: AWS::EC2::Instance
     Properties:
       InstanceType: t3a.small
       ImageId: !Ref AmazonLinux2AmiId
       KeyName: !Ref KeyName
-      SubnetId: !Ref SubnetId
+      SubnetId: !Ref PublicSubnetA
       SecurityGroupIds:
-       - sg-009e14b4f7676f802
+        - !Ref SandboxSecurityGroup
       Tags:
-      - Key: Name
-        Value: DevOps Sandbox
+        - Key: Name
+          Value: DevOps Sandbox
       IamInstanceProfile: !Ref InstanceProfile
       UserData:
         Fn::Base64: !Sub |
@@ -34,10 +155,10 @@ Resources:
           chmod +x /tmp/commands.sh
           /tmp/commands.sh
       BlockDeviceMappings:
-      - DeviceName: /dev/xvda
-        Ebs:
-          VolumeType: gp3
-          VolumeSize: 20  # Set the volume size according to your needs
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeType: gp3
+            VolumeSize: 20  # Set the volume size according to your needs
       Metadata:
         AWS::CloudFormation::Init:
           configSets:
@@ -48,12 +169,16 @@ Resources:
               yum:
                 docker: []
                 jq: []
+
+  # IAM Instance Profile
   InstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
       Path: "/"
       Roles:
         - !Ref EC2InstanceRole
+
+  # IAM Role
   EC2InstanceRole:
     Type: AWS::IAM::Role
     Properties:
